@@ -18,17 +18,17 @@ export class LLMHandler {
         this.onReady = onReady;
     }
 
-    async loadModel(modelId) {
+    async loadModel(modelId, progressCallback) {
         if (this.isLoaded && this.modelId === modelId) return;
         
         console.log(`Initializing WebLLM with ${modelId}...`);
         
         try {
-            // Placeholder: In a real implementation, we would pass initProgressCallback
-            // to update the UI during the heavy download phase.
             this.engine = await CreateMLCEngine(modelId, {
                 initProgressCallback: (report) => {
-                    this.onProgress(report.text);
+                    // Call the passed callback or fallback to stored one (backward compatibility)
+                    if (progressCallback) progressCallback(report);
+                    else this.onProgress(report.text);
                 },
                 appConfig: prebuiltAppConfig // optional custom config
             });

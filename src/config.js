@@ -1,11 +1,29 @@
 export const CONFIG = {
-    DEFAULT_MODEL: "Llama-3-8B-Instruct-q4f32_1-1k",
+    DEFAULT_MODEL: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
     AVAILABLE_MODELS: [
+        { 
+            id: "Llama-3.2-1B-Instruct-q4f16_1-MLC", 
+            name: "Llama 3.2 1B", 
+            family: "llama",
+            vram_required_mb: 850
+        },
         { 
             id: "Llama-3-8B-Instruct-q4f32_1-1k", 
             name: "Llama 3 8B (Fast)", 
             family: "llama",
-            vram_required_mb: 4000
+            vram_required_mb: 5200
+        },
+        { 
+            id: "Llama-3.2-3B-Instruct-q4f16_1-MLC", 
+            name: "Llama 3.2 3B", 
+            family: "llama",
+            vram_required_mb: 2100
+        },
+        { 
+            id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", 
+            name: "Qwen2.5 1.5B", 
+            family: "qwen",
+            vram_required_mb: 1200
         },
         { 
             id: "Phi-3-mini-4k-instruct-q4f16_1-1k", 
@@ -18,6 +36,12 @@ export const CONFIG = {
             name: "Mistral 7B", 
             family: "mistral",
             vram_required_mb: 4500
+        },
+        {
+            id: "Gemma-2-2b-it-q4f16_1-MLC",
+            name: "Gemma 2 2B",
+            family: "gemma",
+            vram_required_mb: 1600
         }
     ],
     DEFAULT_PARAMS: {
