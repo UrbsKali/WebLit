@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebLit - AI Research Assistant</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Import Map for Modules -->
+    <script type="importmap">
+    {
+        "imports": {
+            "@mlc-ai/web-llm": "https://esm.run/@mlc-ai/web-llm",
+            "@xenova/transformers": "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.0/dist/transformers.min.js"
+        }
+    }
+    </script>
+    
+    <!-- Lucide Icons for UI -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 h-screen w-screen overflow-hidden flex flex-col font-sans">
+
+    <!-- Top Navigation Bar -->
+    <header class="h-16 border-b border-slate-700 flex items-center justify-between px-4 md:px-6 bg-slate-950 shrink-0">
+        <div class="flex items-center gap-3">
+            <!-- Mobile Menu Button -->
+            <button id="sidebar-toggle" class="md:hidden p-1 text-slate-400 hover:text-white mr-1">
+                <i data-lucide="menu" class="w-6 h-6"></i>
+            </button>
+            
+            <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+                <i data-lucide="book-open" class="w-5 h-5 text-white"></i>
+            </div>
+            <h1 class="font-bold text-xl tracking-tight">WebLit</h1>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <nav class="flex gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800" id="main-nav">
+            <!-- Tabs injected by JavaScript -->
+        </nav>
+
+        <!-- Right Actions -->
+        <div class="flex items-center gap-2">
+            <!-- Model Status Indicator -->
+            <div class="relative">
+                <button id="model-status-trigger" class="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center hover:bg-slate-800 transition-colors ring-offset-2 ring-offset-slate-950 focus:ring-2 focus:ring-indigo-600 focus:outline-none">
+                    <span class="w-2.5 h-2.5 rounded-full bg-slate-600 transition-colors status-dot"></span>
+                </button>
+                
+                <!-- Status Popup -->
+                <div id="status-popup" class="hidden absolute right-0 top-full mt-2 w-48 p-3 rounded-lg bg-slate-900 border border-slate-700 shadow-xl z-50 animate-fade-in">
+                    <p class="text-[10px] uppercase text-slate-500 font-bold mb-1">System Status</p>
+                    <p class="status-text text-xs text-slate-200">LLM Not Loaded</p>
+                </div>
+            </div>
+            
+            <button id="params-trigger" class="p-2 hover:bg-slate-800 rounded-md transition-colors text-slate-400 hover:text-white" title="Settings">
+                <i data-lucide="settings" class="w-5 h-5"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main id="app-container" class="flex-1 relative overflow-hidden flex">
+        
+        <!-- Mobile Sidebar Backdrop -->
+        <div id="sidebar-backdrop" class="fixed inset-0 bg-black/60 z-30 hidden md:hidden backdrop-blur-sm transition-opacity"></div>
+
+        <!-- Sidebar (Model Selection & Quick Config) -->
+        <aside id="main-sidebar" class="w-72 border-r border-slate-700 bg-slate-950 md:bg-slate-900/50 flex flex-col pt-4 pb-4 fixed inset-y-0 left-0 z-40 transform -translate-x-full transition-transform duration-300 md:relative md:translate-x-0 shadow-2xl md:shadow-none">
+            <div class="px-4 mb-4 flex justify-between items-center md:hidden">
+                <span class="font-bold text-lg text-slate-200">Menu</span>
+                <button id="sidebar-close" class="p-1 text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="px-4 mb-6">
+                <label class="block text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">Active Model</label>
+                <div id="model-selector-container">
+                    <!-- Model Selector Component -->
+                </div>
+            </div>
+
+            <div class="px-4 flex-1 overflow-y-auto custom-scrollbar">
+                <div id="active-context-panel" class="space-y-4">
+                    <!-- Dynamic Context Info (Loaded PDF count, Vector DB stats) -->
+                    <div class="p-4 rounded-lg bg-slate-800/50 border border-slate-700/50">
+                        <h3 class="text-sm font-semibold mb-2 flex items-center gap-2">
+                            <i data-lucide="database" class="w-4 h-4 text-indigo-400"></i> Vector DB
+                        </h3>
+                        <div class="text-xs text-slate-400 flex justify-between mb-1">
+                            <span>Documents</span>
+                            <span id="stat-docs">0</span>
+                        </div>
+                        <div class="text-xs text-slate-400 flex justify-between">
+                            <span>Chunks</span>
+                            <span id="stat-chunks">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="px-4 mt-auto">
+                <div id="memory-usage" class="text-[10px] text-slate-600 text-center">
+                    VRAM Usage: -- / --
+                </div>
+            </div>
+        </aside>
+
+        <!-- Dynamic Viewport -->
+        <section id="viewport" class="flex-1 bg-slate-900 relative flex flex-col">
+            <!-- Views (Chat, Research, RAG) will be rendered here -->
+            <div class="flex-1 flex items-center justify-center text-slate-600">
+                Initializing...
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Settings Modal Overlay (Hidden by default) -->
+    <div id="settings-modal" class="hidden absolute inset-0 z-50 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4">
+        <!-- Injected via JS -->
+    </div>
+
+    <!-- Initialization Script -->
+    <script type="module" src="./src/main.js"></script>
+    <script>
+        // Icon replacement on load
+        window.addEventListener('load', () => {
+            if (window.lucide) window.lucide.createIcons();
+        });
+    </script>
+</body>
+</html>
