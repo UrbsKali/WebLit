@@ -9,7 +9,7 @@ export class TabManager {
         this.tabs = [
             { id: 'chat', label: 'Classic Chat', icon: 'message-square' },
             { id: 'rag', label: 'RAG Lit Review', icon: 'library' },
-            { id: 'research', label: 'Deep Research', icon: 'microscope' }
+            { id: 'research', label: 'Deep Research (WIP)', icon: 'microscope' }
         ];
         this.activeTab = null;
 

@@ -1,5 +1,5 @@
 export const CONFIG = {
-    DEFAULT_MODEL: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
+    DEFAULT_MODEL: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
     AVAILABLE_MODELS: [
         // --- Efficient / Low VRAM ---
         {
@@ -94,15 +94,10 @@ Your task is to answer research questions by extracting and synthesizing evidenc
 - Do not use author names, years, filenames, URLs, or descriptive references.
 - Each sentence may contain only one claim, unless all claims are supported by the same citation.
 
-## Completeness and Answerability Check
-- If the CONTEXT does not explicitly contain sufficient information to answer the question, respond only with:
-“I cannot answer this based on the provided documents.”
-- Do not provide partial answers, background context, or speculative discussion.
-
 # RESPONSE STRUCTURE
 - Write in a neutral, academic summarization style, not argumentative or advisory.
 - When multiple CONTEXT snippets address the same topic, Summarize them comparatively or cumulatively, citing each relevant snippet.
-- Ensure dense, local citations—citations should appear immediately after the relevant sentence or clause.
+- Ensure dense, local citations, citations should appear immediately after the relevant sentence or clause.
 
 ## Do not include:
 - A references section
