@@ -91,7 +91,7 @@ export class RagTab {
                     if (summaries.length > 0) {
                          try {
                              const rewritePrompt = [
-                                { role: "system", content: "You are an expert search query optimizer. GENERATE 3 DISTINCT SEARCH QUERIES based on the user's question and the provided document abstracts to maximize vector database retrieval. \n\nOutput logic:\n- One query per line.\n- Start each query with a hyphen '-'.\n- NO intro/outro text." },
+                                { role: "system", content: "You are an expert search query optimizer.\n\nTask:\n1. Analyze the User Question to understand the core intent.\n2. Review the Document Abstracts to identify matching terminology.\n3. Generate 3 DISTINCT search queries that map the user's intent to the specific vocabulary used in the documents.\n\nOutput logic:\n- One query per line.\n- Start each query with a hyphen '-'.\n- NO intro/outro text." },
                                 { role: "user", content: `User Question: "${query}"\n\nAvailable Document Abstracts:\n${summaries.join('\n')}` }
                              ];
                              
