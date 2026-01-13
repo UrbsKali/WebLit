@@ -2,6 +2,7 @@
     "recommendations": [
         "bradlc.vscode-tailwindcss",
         "stivo.tailwind-fold",
-        "alfredbirk.tailwind-documentation"
+        "alfredbirk.tailwind-documentation",
+        "ritwickdey.liveserver"
     ]
 }

@@ -94,14 +94,14 @@ export class TabManager {
             case 'rag':
                 viewport.innerHTML = `<div class="flex h-full">
                     <!-- Document List Sidebar -->
-                    <div class="w-64 border-r border-slate-800 bg-slate-900/50 p-4">
+                    <div class="w-64 border-r border-slate-800 bg-slate-900/50 p-4 flex flex-col">
                         <h3 class="font-semibold text-slate-300 mb-4 text-xs uppercase">Library</h3>
-                        <label class="block w-full border border-dashed border-slate-700 rounded-lg p-4 text-center cursor-pointer hover:bg-slate-800 transition-colors">
+                        <div id="doc-list" class="flex-1 overflow-y-auto mb-4 space-y-2 min-h-0 custom-scrollbar"></div>
+                        <label id="drop-zone" class="shrink-0 block w-full border border-dashed border-slate-700 rounded-lg p-4 text-center cursor-pointer hover:bg-slate-800 transition-colors">
                             <i data-lucide="upload" class="w-6 h-6 text-slate-500 mx-auto mb-2"></i>
                             <span class="text-xs text-slate-400">Upload PDF</span>
-                            <input type="file" class="hidden" accept=".pdf" multiple>
+                            <input id="pdf-upload-input" type="file" class="hidden" accept=".pdf" multiple>
                         </label>
-                        <div id="doc-list" class="mt-4 space-y-2"></div>
                     </div>
                     
                     <!-- Chat Area for RAG -->
@@ -116,6 +116,140 @@ export class TabManager {
                          </div>
                     </div>
                 </div>`;
+
+                // Bind Upload Event
+                setTimeout(() => {
+                    const uploadInput = document.getElementById('pdf-upload-input');
+                    const dropZone = document.getElementById('drop-zone');
+
+                    // Function to render library from LocalStorage
+                    const renderLibrary = () => {
+                        const docList = document.getElementById('doc-list');
+                        if (!docList) return;
+                        
+                        docList.innerHTML = '';
+                        const docs = [];
+                        for (let i = 0; i < localStorage.length; i++) {
+                            const key = localStorage.key(i);
+                            if (key && key.startsWith('doc_')) {
+                                try {
+                                    docs.push(JSON.parse(localStorage.getItem(key)));
+                                } catch(e) { console.error(e); }
+                            }
+                        }
+                        
+                        // Sort by date desc (newest first)
+                        docs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+                        
+                        docs.forEach(doc => {
+                            const el = document.createElement('div');
+                            el.className = 'p-3 bg-slate-800 rounded-lg border border-slate-700 hover:border-indigo-500 transition-colors group relative';
+                            el.innerHTML = `
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="flex-1 min-w-0">
+                                        <h4 class="text-xs font-medium text-slate-200 truncate" title="${doc.name}">${doc.name}</h4>
+                                        <div class="flex items-center gap-2 mt-1 text-[10px] text-slate-500">
+                                            <span>${(doc.size / 1024).toFixed(1)} KB</span>
+                                            <span>•</span>
+                                            <span>${doc.wordCount.toLocaleString()} words</span>
+                                        </div>
+                                    </div>
+                                    <div class="text-indigo-400">
+                                        <i data-lucide="file-text" class="w-4 h-4"></i>
+                                    </div>
+                                </div>
+                                <button class="delete-doc absolute top-1 right-1 p-1 hover:bg-slate-700 rounded text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" data-id="${doc.id}">
+                                    <i data-lucide="x" class="w-3 h-3"></i>
+                                </button>
+                            `;
+                            // Add Delete Event
+                            el.querySelector('.delete-doc').addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                if(confirm(`Delete ${doc.name}?`)) {
+                                    localStorage.removeItem(doc.id);
+                                    renderLibrary();
+                                }
+                            });
+
+                            docList.appendChild(el);
+                        });
+                        
+                        if (window.lucide) window.lucide.createIcons();
+                    };
+
+                    // Initial render
+                    renderLibrary();
+
+                    const handleFiles = async (files) => {
+                        if (files.length > 0) {
+                            for (const file of files) {
+                                if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                                    console.warn(`Skipping non-PDF file: ${file.name}`);
+                                    continue;
+                                }
+                                console.log(`Processing ${file.name}...`);
+                                try {
+                                    const text = await this.context.pdfProcessor.loadFile(file);
+                                    console.log(`Text extracted from ${file.name}`);
+                                    
+                                    // Store in LocalStorage
+                                    const docId = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                                    const docData = {
+                                        id: docId,
+                                        name: file.name,
+                                        text: text,
+                                        size: file.size,
+                                        wordCount: text.trim().split(/\s+/).length,
+                                        uploadedAt: new Date().toISOString()
+                                    };
+                                    localStorage.setItem(docId, JSON.stringify(docData));
+                                    
+                                } catch (err) {
+                                    console.error(`Error loading ${file.name}`, err);
+                                }
+                            }
+                            // Refresh List
+                            renderLibrary();
+                        }
+                    };
+
+                    if (uploadInput) {
+                        uploadInput.addEventListener('change', (e) => handleFiles(e.target.files));
+                    }
+
+                    if (dropZone) {
+                        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                            dropZone.addEventListener(eventName, preventDefaults, false);
+                        });
+
+                        function preventDefaults(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
+
+                        ['dragenter', 'dragover'].forEach(eventName => {
+                            dropZone.addEventListener(eventName, highlight, false);
+                        });
+
+                        ['dragleave', 'drop'].forEach(eventName => {
+                            dropZone.addEventListener(eventName, unhighlight, false);
+                        });
+
+                        function highlight(e) {
+                            dropZone.classList.add('bg-slate-800', 'border-indigo-500');
+                        }
+
+                        function unhighlight(e) {
+                            dropZone.classList.remove('bg-slate-800', 'border-indigo-500');
+                        }
+
+                        dropZone.addEventListener('drop', (e) => {
+                            const dt = e.dataTransfer;
+                            const files = dt.files;
+                            handleFiles(files);
+                        });
+                    }
+                }, 0);
                 break;
                 
             case 'research':

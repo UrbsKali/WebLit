@@ -42,8 +42,18 @@ class App {
     }
 
     updateSideBarStats() {
+        // Calculate Docs Size
+        let docsSize = 0;
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('doc_')) {
+               docsSize += (localStorage.getItem(key) || '').length;
+            }
+        }
+
         this.ui.updateStats({
-            historySize: formatBytes(this.history.getSizeBytes())
+            historySize: formatBytes(this.history.getSizeBytes()),
+            docsSize: formatBytes(docsSize)
         });
         this.ui.renderSessionList(this.history.getSessions(), this.history.getCurrentId());
     }
@@ -61,10 +71,22 @@ class App {
 
             // Clear History Button (Global Wipe)
             if (e.target.closest('#clear-history-btn')) {
-                if(confirm('WARNING: This will delete ALL conversation history permanently. Are you sure?')) {
+                if(confirm('WARNING: This will delete ALL conversation history and uploaded documents permanently. Are you sure?')) {
                     this.history.deleteAllSessions();
+                    
+                    // Clear Docs
+                    const keys = [];
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key && key.startsWith('doc_')) keys.push(key);
+                    }
+                    keys.forEach(k => localStorage.removeItem(k));
+
                     this.restoreSession();
                     this.updateSideBarStats();
+                    
+                    // Reload to refresh UI components like the library list
+                    window.location.reload(); 
                 }
             }
 

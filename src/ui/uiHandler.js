@@ -74,9 +74,7 @@ export class UIController {
                         const btn = parent.querySelector('button');
                         if (btn) {
                             btn.click();
-                            // Optional: Flash visual feedback
                             activeElement.blur();
-                            // In real app, we might want to keep focus or refocus after send
                         }
                     }
                 }
@@ -173,6 +171,7 @@ export class UIController {
          if (stats.docs !== undefined) $('#stat-docs').textContent = stats.docs;
          if (stats.chunks !== undefined) $('#stat-chunks').textContent = stats.chunks;
          if (stats.historySize !== undefined) $('#stat-history-size').textContent = stats.historySize;
+         if (stats.docsSize !== undefined) $('#stat-docs-size').textContent = stats.docsSize;
     }
 
     renderSessionList(sessions, currentId) {
