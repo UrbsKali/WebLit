@@ -69,14 +69,23 @@ export class ModelSelector {
             return;
         }
 
-        listContainer.innerHTML = filteredModels.map(model => 
-            `<div 
-                class="model-option p-3 rounded-lg border bg-slate-800/50 cursor-pointer hover:bg-slate-700 transition-all ${this.selectedModel === model.id ? 'ring-2 ring-indigo-500 border-transparent bg-slate-800' : 'border-slate-700'}"
+        const loadedModelId = this.context.llm?.modelId;
+        const isLoaded = this.context.llm?.isLoaded;
+
+        listContainer.innerHTML = filteredModels.map(model => {
+            const isThisLoaded = isLoaded && loadedModelId === model.id;
+            const isSelected = this.selectedModel === model.id;
+            
+            return `<div 
+                class="model-option p-3 rounded-lg border bg-slate-800/50 cursor-pointer hover:bg-slate-700 transition-all ${isSelected ? 'ring-2 ring-indigo-500 border-transparent bg-slate-800' : 'border-slate-700'}"
                 data-id="${model.id}"
             >
                 <div class="flex justify-between items-center mb-1">
                     <span class="text-sm font-medium text-slate-200">${model.name}</span>
-                    <span class="text-[10px] bg-slate-900 px-1.5 py-0.5 rounded text-slate-400 border border-slate-700">${model.family}</span>
+                    <div class="flex gap-1">
+                        ${isThisLoaded ? '<span class="text-[10px] bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded border border-green-800">LOADED</span>' : ''}
+                        <span class="text-[10px] bg-slate-900 px-1.5 py-0.5 rounded text-slate-400 border border-slate-700">${model.family}</span>
+                    </div>
                 </div>
                 <div class="flex items-center gap-3 text-[10px] text-slate-500">
                     <div class="flex items-center gap-1">
@@ -85,7 +94,7 @@ export class ModelSelector {
                     </div>
                 </div>
             </div>`
-        ).join('');
+        }).join('');
 
         if (window.lucide) window.lucide.createIcons();
 

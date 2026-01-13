@@ -34,9 +34,39 @@ export class PDFProcessor {
 
     chunkText(text) {
         console.log("PDFProcessor: Chunking text...");
-        // TODO: Implement sliding window chunking
-        return [
-            { text: text.substring(0, 100), metadata: { page: 1 } } // Mock
-        ];
+        const chunks = [];
+        
+        // Simple sliding window
+        // Ensure we don't loop indefinitely
+        if (text.length === 0) return chunks;
+
+        let start = 0;
+        let pageNum = 1; // Basic page estimation could count newlines or form feeds, but here we just process raw text.
+                         // Ideally, we'd preserve page structure from loadFile, but loadFile currently joins all text.
+
+        while (start < text.length) {
+            const end = Math.min(start + this.chunkSize, text.length);
+            let chunkText = text.substring(start, end);
+
+            // Push chunk
+            chunks.push({
+                text: chunkText,
+                metadata: {
+                    source: "pdf",
+                    estimated_index: chunks.length
+                }
+            });
+
+            // Move window
+            start += (this.chunkSize - this.overlap);
+            // Safety break for Infinite loops if overlap >= chunksize
+            if (this.overlap >= this.chunkSize) {
+                console.warn("Overlap >= Chunk Size. Forcing progress.");
+                start = end; 
+            }
+        }
+        
+        console.log(`Generated ${chunks.length} chunks.`);
+        return chunks;
     }
 }

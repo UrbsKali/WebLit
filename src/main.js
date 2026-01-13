@@ -25,6 +25,9 @@ class App {
     async init() {
         console.log("App: Booting...");
         
+        // Initialize Vector Store (Load persistance)
+        await this.vectorStore.initialize();
+
         // Render UI
         this.ui.init();
         
@@ -42,18 +45,25 @@ class App {
     }
 
     updateSideBarStats() {
-        // Calculate Docs Size
+        // Calculate Docs Size (Storage)
         let docsSize = 0;
+        let docCount = 0;
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key && key.startsWith('doc_')) {
                docsSize += (localStorage.getItem(key) || '').length;
+               docCount++;
             }
         }
 
+        // Get Vector DB Stats
+        const vectorStats = this.vectorStore.getStats();
+
         this.ui.updateStats({
             historySize: formatBytes(this.history.getSizeBytes()),
-            docsSize: formatBytes(docsSize)
+            docsSize: formatBytes(docsSize),
+            docs: docCount,
+            chunks: vectorStats.count || 0
         });
         this.ui.renderSessionList(this.history.getSessions(), this.history.getCurrentId());
     }
@@ -244,6 +254,9 @@ class App {
             this.ui.updateStatus('ready', 'Model Ready');
             this.ui.showLoading(false);
             
+            // Visual Update in Sidebar
+            this.ui.modelSelector.renderOptions();
+
             // Optional: Notification or tiny toast
             console.log("Model loaded successfully");
         } catch (error) {
