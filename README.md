@@ -76,6 +76,28 @@ To maintain privacy while enabling persistence, data is structured as follows in
 *   `weblit_session_{UUID}`: The actual array of messages (User/Assistant exchanges) for a specific session.
 
 
+### 4. Smart Session Renaming
+After the first exchange in a new chat, WebLit automatically generates a concise, keyword-rich title for the session.
+*   **Mechanism**: A specialized system prompt instructs the ongoing LLM instance to summarize the topic based on the initial user-assistant turn.
+*   **Privacy**: This happens entirely locally; no text is sent to external servers for summarization.
+
+
+## Configuration & Customization
+
+WebLit offers a dedicated **Settings-Modal** (accessible via the sidebar) to fine-tune the experience without touching code.
+
+### 1. LLM Behavior
+*   **System Prompts**: You can edit the base system instructions for both the "Classic Chat" and the "RAG/Literature Review" modes. This allows you to change the persona or strictness of the AI.
+*   **Inference Parameters**: Adjust `Temperature` (creativity) and `Top P` controls.
+
+### 2. RAG Tuning
+*   **Embedding Model Selection**: Switch between different quantized models (e.g., `Xenova/all-MiniLM-L6-v2`) to balance performance and accuracy.
+*   **Chunking Strategy**: Customize `Chunk Size` and `Overlap` to optimize how PDF text is split before being stored in the VectorDB.
+
+### 3. Markdown Support
+The chat interface fully supports Markdown rendering, including code blocks, lists, and bold/italic formatting, ensuring technical discussions are easy to read.
+
+
 ### Plans for Deep Research Integration
 
 Future versions of WebLit aim to integrate with academic databases (like Semantic Scholar, PubMed, arXiv) to allow users to directly search and import papers into their local library, further streamlining the research workflow and enhancing the depth of research capabilities.

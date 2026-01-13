@@ -32,16 +32,57 @@ class App {
         this.ui.init();
         
         this.setupBindings();
+        // Initial session load handled by UI switching to default tab
+        this.updateSideBarStats();
+    }
+
+    handleTabSwitch(tabId) {
+        this.activeTab = tabId;
+        console.log(`Switched to tab: ${tabId}`);
+
+        // Ensure we have a valid session for this tab type
+        const currentSession = this.history.getSessions().find(s => s.id === this.history.getCurrentId());
+        
+        // If current session type doesn't match tab, try to switch or create
+        // Legacy sessions (no type) are treated as 'chat'
+        const currentType = currentSession?.type || 'chat';
+        
+        if (currentType !== tabId) {
+            // Find most recent session of this type
+            const recent = this.history.getSessions().find(s => (s.type || 'chat') === tabId);
+            
+            if (recent) {
+                this.history.loadSession(recent.id);
+            } else {
+                // Create new session for this type
+                const title = tabId === 'rag' ? 'New Literature Review' : 'New Chat';
+                this.history.createSession(title, [], tabId);
+            }
+        }
+        
         this.restoreSession();
         this.updateSideBarStats();
     }
 
     restoreSession() {
-        // Load history into UI
-        const msgs = this.history.getHistory();
-        msgs.forEach(msg => {
-            this.ui.appendMessage(msg.role, msg.content);
-        });
+        if (!this.activeTab) return;
+
+        // Clear UI first
+        if (this.activeTab === 'chat') {
+            this.ui.clearChat();
+            const container = $('#chat-history');
+            if (!container) return; // Should exist if tab is active
+            
+             // Load history into UI
+            const msgs = this.history.getHistory();
+            msgs.forEach(msg => {
+                this.ui.appendMessage(msg.role, msg.content);
+            });
+        } else if (this.activeTab === 'rag') {
+            const msgs = this.history.getHistory();
+            // Delegate restoration to the RagTab entirely, preserving citations if available
+            this.ui.tabs.views.rag.restoreHistory(msgs);
+        }
     }
 
     updateSideBarStats() {
@@ -124,12 +165,15 @@ class App {
 
             // New Chat Button
             if (e.target.closest('#btn-new-chat')) {
-                this.history.createSession();
+                const type = this.activeTab || 'chat';
+                const title = type === 'rag' ? 'New Literature Review' : 'New Chat';
+                this.history.createSession(title, [], type);
+                
                 this.restoreSession();
                 this.updateSideBarStats();
                 
                 // Focus input if visible
-                const input = $('#chat-input');
+                const input = $(type === 'rag' ? '#rag-input' : '#chat-input');
                 if (input) input.focus();
             }
         });
@@ -140,16 +184,7 @@ class App {
         });
     }
 
-    restoreSession() {
-        // Clear UI first
-        this.ui.clearChat();
-        
-        // Load history into UI
-        const msgs = this.history.getHistory();
-        msgs.forEach(msg => {
-            this.ui.appendMessage(msg.role, msg.content);
-        });
-    }
+
 
     async ensureModelLoaded() {
         if (this.llm.isLoaded) return true;
@@ -229,14 +264,15 @@ class App {
         const history = this.history.getHistory();
         const currentSessionId = this.history.getCurrentId();
         const session = this.history.getSessions().find(s => s.id === currentSessionId);
+        const defaultTitles = ["New Chat", "New Literature Review"];
         
-        if (history.length <= 2 && session && session.title === "New Chat") {
+        if (history.length <= 2 && session && defaultTitles.includes(session.title)) {
             console.log("Generating conversation title...");
             const userMsg = contextMessages.find(m => m.role === 'user')?.content || "";
             
             const prompt = [
                 { role: "system", content: "You are a concise expert summarizer. Generate a short title (max 5 words) that captures the specific subject of text. Use keywords only. Do NOT use full sentences. Do NOT use words like 'Conversation', 'Chat', 'Question', 'Here is'. Do NOT use quotes. Plain text only, NO markdown." },
-                { role: "user", content: `Generate a keyword-focused title for this exchange:\n\nUser: ${userMsg}\nAssistant: ${lastResponse.substring(0, 200)}...\n\nTitle:` }
+                { role: "user", content: `Generate a keyword-focused title for this exchange:\n\nUser: ${userMsg.substring(0, 500)}\nAssistant: ${lastResponse.substring(0, 200)}...\n\nTitle:` }
             ];
 
             try {

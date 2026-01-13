@@ -195,56 +195,108 @@ export class RagTab {
                     await this.context.llm.chat(messages, (chunk, fullText) => {
                         collectedText = fullText;
 
-                        // Process Citations: matches [1], [2] etc.
-                        const sourceRegex = /\[(\d+)\]/g;
-                        const uniqueSources = new Map();
-                        let sourceCount = 0;
+                        // Process Citations: matches [1], [2], [1, 3] etc.
+                        // We use a regex that captures optional preceding newlines to fix "unwanted linebreak" issues
+                        const sourceRegex = /(\n+)?\s*\[\s*([\d,\s]+)\s*\]/g;
+                        const citedIndices = new Set();
 
-                        // Create placeholders AND build source list
-                        const formattedMarkdown = fullText.replace(sourceRegex, (match, digits) => {
-                            const index = parseInt(digits, 10) - 1; // Convert 1-based [1] to 0-based index
-
-                            if (index >= 0 && index < results.length) {
-                                const item = results[index].item;
-                                const name = (item.metadata && item.metadata.filename) ? item.metadata.filename.trim() : 'Unknown';
-                                
-                                if (!uniqueSources.has(name)) {
-                                    sourceCount++;
-                                    uniqueSources.set(name, sourceCount);
+                        // 1. Replace [n] or [n, m] with placeholders
+                        const formattedMarkdown = fullText.replace(sourceRegex, (match, prefix, inner) => {
+                            const parts = inner.split(',').map(s => s.trim()).filter(s => s);
+                            const validIndices = [];
+                            
+                            parts.forEach(p => {
+                                const index = parseInt(p, 10) - 1; 
+                                if (index >= 0 && index < results.length) {
+                                    validIndices.push(index);
+                                    citedIndices.add(index);
                                 }
-                                const id = uniqueSources.get(name);
-                                return `CITATION_${id}`;
+                            });
+
+                            if (validIndices.length > 0) {
+                                // Use a placeholder distinct from Markdown syntax (%%...%%)
+                                // Prepend a space to ensure separation, but consume the newlines (prefix)
+                                return ` %%CITATION_REF_${validIndices.join('_')}%% `;
                             }
-                            return match; // Return original text if index out of bounds
+                            return match;
                         });
 
                         let html = marked.parse(formattedMarkdown);
+                        
+                        // 2. Render Citations (with rich tooltips)
+                        // Match the custom placeholder
+                        html = html.replace(/%%CITATION_REF_([\d_]+)%%/g, (match, idxStr) => {
+                            const indices = idxStr.split('_').map(n => parseInt(n, 10));
+                            const displayLabel = indices.map(i => i + 1).join(', ');
+                            
+                            const tooltipContent = indices.map(idx => {
+                                const result = results[idx];
+                                if (!result || !result.item) return '';
 
-                        // Replace placeholders with Visual Pills
-                        const sortedSources = Array.from(uniqueSources.entries()).sort((a, b) => a[1] - b[1]);
+                                const item = result.item;
+                                const name = (item.metadata && item.metadata.filename) ? item.metadata.filename.trim() : 'Unknown';
+                                const rawText = item.content || item.text || "";
+                                let snippet = rawText.replace(/\s+/g, ' ').substring(0, 150).trim();
+                                if (snippet.length === 0) snippet = "No text preview available.";
+                                else snippet += "...";
 
-                        html = html.replace(/CITATION_(\d+)/g, (match, id) => {
-                            const src = sortedSources.find(s => s[1] == id);
-                            const name = src ? src[0] : 'Unknown';
-                            return `<sup class="inline-block"><span class="cursor-help group relative px-1.5 py-0.5 ml-0.5 rounded-full bg-slate-700 hover:bg-indigo-600 text-indigo-300 hover:text-white text-[10px] font-bold transition-colors select-none" data-id="${id}">
-                                 ${id}
-                                 <span class="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded shadow-xl whitespace-nowrap z-50 text-xs text-slate-300 pointer-events-none">
-                                     <span class="flex items-center gap-1.5"><i data-lucide="file-text" class="w-3 h-3"></i> ${name}</span>
-                                     <svg class="absolute text-slate-900 h-2 w-full left-0 top-full" x="0px" y="0px" viewBox="0 0 255 255"><polygon class="fill-current" points="0,0 127.5,127.5 255,0"/></svg>
-                                 </span>
-                             </span></sup>`;
+                                // Escape HTML to prevent breakage
+                                const escapeHtml = (str) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+                                const safeName = escapeHtml(name);
+                                const safeSnippet = escapeHtml(snippet);
+
+                                return `
+                                    <div class="mb-3 last:mb-0">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="text-[10px] font-bold text-indigo-400 border border-indigo-500/30 px-1 rounded bg-indigo-500/10">${idx+1}</span>
+                                            <span class="text-xs font-bold text-slate-200 truncate flex-1">${safeName}</span>
+                                        </div>
+                                        <p class="text-[10px] text-slate-400 leading-relaxed font-mono border-l-2 border-slate-700 pl-2">${safeSnippet}</p>
+                                    </div>
+                                `;
+                            }).join('');
+                            
+                            if (!tooltipContent) return `[${displayLabel}]`;
+
+                            return `<sup class="inline-block relative group z-10">
+                                <span class="cursor-help px-1.5 py-0.5 ml-0.5 rounded-full bg-slate-700 hover:bg-indigo-600 text-indigo-300 hover:text-white text-[10px] font-bold transition-colors select-none">
+                                    ${displayLabel}
+                                </span>
+                                <!-- Tooltip -->
+                                <div class="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 text-left pointer-events-none max-h-64 overflow-y-auto custom-scrollbar">
+                                    ${tooltipContent}
+                                    <!-- Arrow -->
+                                    <svg class="absolute text-slate-900 h-2 w-4 left-1/2 -translate-x-1/2 top-full" x="0px" y="0px" viewBox="0 0 255 255"><polygon class="fill-current" points="0,0 127.5,127.5 255,0"/></svg>
+                                </div>
+                            </sup>`;
                         });
 
-                        // Append Sources List
-                        if (sortedSources.length > 0) {
+                        // 3. Render Source List (Grouped by File)
+                        if (citedIndices.size > 0) {
+                            const uniqueFiles = new Map(); // Name -> Array of IDs relative to this query [1, 5, 8]
+
+                            Array.from(citedIndices).sort((a, b) => a - b).forEach(idx => {
+                                const item = results[idx].item;
+                                const name = (item.metadata && item.metadata.filename) ? item.metadata.filename.trim() : 'Unknown';
+                                if (!uniqueFiles.has(name)) uniqueFiles.set(name, []);
+                                uniqueFiles.get(name).push(idx + 1);
+                            });
+
                             html += `
-                             <div class="mt-6 pt-4 border-t border-slate-700/50">
-                                 <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Sources Cited</h4>
-                                 <div class="flex flex-wrap gap-2">
-                                     ${sortedSources.map(([name, id]) => `
-                                         <div class="flex items-center gap-2 bg-slate-800/50 border border-slate-700/50 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 hover:border-indigo-500/30 transition-colors cursor-default">
-                                             <span class="flex items-center justify-center w-4 h-4 rounded-full bg-indigo-500/20 text-indigo-400 font-mono text-[10px] font-bold">${id}</span>
-                                             <span class="truncate max-w-[200px]" title="${name}">${name}</span>
+                             <div class="mt-8 pt-4 border-t border-slate-800">
+                                 <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Referenced Documents</h4>
+                                 <div class="space-y-2">
+                                     ${Array.from(uniqueFiles.entries()).map(([name, ids]) => `
+                                         <div class="flex items-start gap-3 p-2 rounded-lg bg-slate-800/30 border border-slate-800 hover:border-indigo-500/30 transition-colors">
+                                             <div class="mt-0.5 w-6 h-6 rounded bg-slate-800 flex items-center justify-center shrink-0 text-indigo-400">
+                                                <i data-lucide="file-text" class="w-3 h-3"></i>
+                                             </div>
+                                             <div class="flex-1 min-w-0">
+                                                <div class="text-xs font-medium text-slate-300 truncate" title="${name}">${name}</div>
+                                                <div class="flex flex-wrap gap-1 mt-1.5">
+                                                    ${ids.map(id => `<span class="bg-indigo-500/10 text-indigo-400 text-[9px] px-1.5 py-0.5 rounded border border-indigo-500/20 font-mono">Ref [${id}]</span>`).join('')}
+                                                </div>
+                                             </div>
                                          </div>
                                      `).join('')}
                                  </div>
@@ -260,7 +312,34 @@ export class RagTab {
                         if (isNearBottom) chatContainer.scrollTop = chatContainer.scrollHeight;
                     });
 
+                    // Save RAG Interaction to History
+                    // 1. Ensure we have a RAG session
+                    // We need to check if current active session is RAG, if not create one
+                    const currentId = this.context.history.getCurrentId();
+                    const sessions = this.context.history.getSessions();
+                    const currentSession = sessions.find(s => s.id === currentId);
+
+                    if (!currentSession || currentSession.type !== 'rag') {
+                        this.context.history.createSession("New Literature Review", [], 'rag');
+                        // We do NOT call restoreSession here as it would wipe our current state
+                    }
+
+                    this.context.history.addMessage('user', query);
+
+                    // Capture the final rendered HTML (including citations)
+                    const finalHtml = contentDiv.innerHTML;
+                    this.context.history.addMessage('assistant', collectedText, { renderedHtml: finalHtml });
+
+                    // Trigger Title Generation (Re-using logic from App)
+                    const history = this.context.history.getHistory();
+                    if (history.length <= 2) {
+                        this.context.checkForTitleGeneration([{ role: 'user', content: query }], collectedText);
+                    }
+
+                    this.context.updateSideBarStats();
+
                 } catch (err) {
+
                     console.error('RAG Chat Error:', err);
                     this.appendMessage(chatContainer, 'system', `Error: ${err.message}`);
                 } finally {
@@ -461,6 +540,39 @@ export class RagTab {
         container.scrollTop = container.scrollHeight;
         if (window.lucide) window.lucide.createIcons();
         return div;
+    }
+
+    restoreHistory(history) {
+        const container = document.getElementById('rag-chat-history');
+        if (!container) return;
+
+        // Clear container or show placeholder if empty
+        if (history.length === 0) {
+            container.innerHTML = `
+                <div class="flex items-center justify-center h-full text-slate-600 flex-col opacity-50">
+                    <i data-lucide="library" class="w-12 h-12 mb-4"></i>
+                    <p>Upload papers to start a Literature Review.</p>
+                </div>
+             `;
+            return;
+        }
+
+        container.innerHTML = ''; // Remove placeholder
+
+        history.forEach(msg => {
+            // Check for stored HTML, otherwise fallback to parsing markdown
+            let content = "";
+            if (msg.renderedHtml) {
+                content = msg.renderedHtml;
+            } else {
+                content = marked.parse(msg.content);
+            }
+
+            this.appendMessage(container, msg.role, content);
+        });
+
+        container.scrollTop = container.scrollHeight;
+        if (window.lucide) window.lucide.createIcons();
     }
 
     renderLibrary() {

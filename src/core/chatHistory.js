@@ -30,13 +30,14 @@ export class ChatHistoryManager {
         }
     }
 
-    createSession(title = "New Chat", initialMessages = []) {
+    createSession(title = "New Chat", initialMessages = [], type = "chat") {
         const id = crypto.randomUUID();
         const newSession = {
             id,
             title,
             timestamp: Date.now(),
-            preview: "Empty conversation"
+            preview: "Empty conversation",
+            type: type
         };
         
         this.sessions.unshift(newSession); // Add to top
@@ -115,8 +116,8 @@ export class ChatHistoryManager {
         }
     }
 
-    addMessage(role, content) {
-        this.messages.push({ role, content, timestamp: Date.now() });
+    addMessage(role, content, metadata = {}) {
+        this.messages.push({ role, content, timestamp: Date.now(), ...metadata });
         this.saveMessages();
     }
 

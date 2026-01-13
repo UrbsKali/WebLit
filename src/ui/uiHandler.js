@@ -178,10 +178,22 @@ export class UIController {
         const container = $('#session-list');
         if (!container) return;
 
-        container.innerHTML = sessions.map(session => `
+        const currentTab = this.context.activeTab || 'chat'; 
+
+        // Filter sessions by current tab type, but default to 'chat' type for 'chat' tab
+        // If session has no type (legacy), treat as 'chat'
+        const filteredSessions = sessions.filter(s => {
+            const sType = s.type || 'chat';
+            return sType === currentTab;
+        });
+
+        container.innerHTML = filteredSessions.map(session => {
+             const icon = session.type === 'rag' ? 'library' : 'message-square';
+             
+             return `
             <div class="group flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${session.id === currentId ? 'bg-slate-800 border-l-2 border-indigo-500' : 'hover:bg-slate-800/50 border-l-2 border-transparent'}"
                  data-session-id="${session.id}">
-                <i data-lucide="message-square" class="w-3 h-3 ${session.id === currentId ? 'text-indigo-400' : 'text-slate-600'}"></i>
+                <i data-lucide="${icon}" class="w-3 h-3 ${session.id === currentId ? 'text-indigo-400' : 'text-slate-600'}"></i>
                 <div class="flex-1 min-w-0">
                     <div class="text-xs font-medium text-slate-300 truncate">${session.title}</div>
                     <div class="text-[10px] text-slate-500 truncate h-3">${session.preview || 'No messages'}</div>
@@ -190,7 +202,7 @@ export class UIController {
                     <i data-lucide="trash-2" class="w-3 h-3"></i>
                 </button>
             </div>
-        `).join('');
+        `}).join('');
         
         if (window.lucide) window.lucide.createIcons();
     }

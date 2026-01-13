@@ -55,6 +55,11 @@ export class TabManager {
 
         // Trigger View Change
         this.renderView(tabId);
+
+        // Notify App to switch context (History, Session Type)
+        if (this.context.handleTabSwitch) {
+            this.context.handleTabSwitch(tabId);
+        }
     }
 
     nextTab() {

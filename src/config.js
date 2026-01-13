@@ -1,6 +1,13 @@
 export const CONFIG = {
     DEFAULT_MODEL: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
     AVAILABLE_MODELS: [
+        // recommanded 
+        {
+            id: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+            name: "Llama 3.2 3B Instruct",
+            family: "llama",
+            vram_required_mb: 2800
+        },
         // --- Efficient / Low VRAM ---
         {
             id: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
@@ -22,12 +29,7 @@ export const CONFIG = {
         },
 
         // --- Balanced ---
-        {
-            id: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
-            name: "Llama 3.2 3B Instruct",
-            family: "llama",
-            vram_required_mb: 2800
-        },
+
         {
             id: "Phi-3.5-mini-instruct-q4f16_1-MLC",
             name: "Phi 3.5 Mini Instruct",
@@ -68,7 +70,7 @@ export const CONFIG = {
         }
     ],
     DEFAULT_PARAMS: {
-        temperature: 0.7,
+        temperature: 0.6,
         top_p: 0.9,
         repetition_penalty: 1.0,
         max_gen_len: 4096,
@@ -97,8 +99,7 @@ Your task is to answer research questions by extracting and synthesizing evidenc
 # RESPONSE STRUCTURE
 - Write in a neutral, academic summarization style, not argumentative or advisory.
 - Articulate the literature review in three parts: 
-    + introduction: A concise definition of a topic under consideration (this may be a descriptive or argumentative thesis, or
-proposal, as well as the scope of the related literature being investigated.
+    + introduction: A concise definition of a topic under consideration (this may be a descriptive or argumentative thesis, or proposal, as well as the scope of the related literature being investigated.
     + body: A detailed synthesis and analysis of the relevant literature, Each work should be critically summarized and evaluated for its premise, methodology, and conclusions.
     + conclusion: The conclusion summarizes the key findings of the review in general terms. Notable commonalities between works, whether favourable or not, may be included here
 - When multiple CONTEXT snippets address the same topic, Summarize them comparatively or cumulatively, citing each relevant snippet.
