@@ -25,6 +25,31 @@ export class PDFProcessor {
                 fullText += pageText + '\n';
             }
 
+            // remove citation brackets like [1], [2], and also [12, 14] and derivate forms ([ 47   ,   61 ])
+            fullText = fullText.replace(/\[\s*\d+(\s*,\s*\d+)*\s*\]/g, '');
+
+            // remove url links to doi and arxiv
+            fullText = fullText.replace(/https?:\/\/(doi\.org|arxiv\.org)\/[^\s]+/g, '');
+
+            //remove arxiv ids like arXiv:1234.56789 or arXiv:hep-th/9901001
+            fullText = fullText.replace(/arXiv:\d{4}\.\d{4,5}(v\d+)?|arXiv:[a-z\-]+(\/\d{7})(v\d+)?/g, '');
+
+            // remove emails
+            fullText = fullText.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '');
+
+            // remove figure captions like Figure 1:, Fig. 2., FIGURE 3 -
+            fullText = fullText.replace(/(Figure|Fig\.|FIGURE)\s*\d+[:.\-]/g, '');
+
+            // remove classique style inline citations like (Author et al., 2020)
+            fullText = fullText.replace(/\([A-Za-z\s]+et al\.,\s*\d{4}\)/g, '');
+
+
+            // if possible, remove entierly the References section
+            const refIndex = fullText.search(/References|REFERENCES|Bibliography|BIBLIOGRAPHY/);
+            if (refIndex !== -1) {
+                fullText = fullText.substring(0, refIndex);
+            }
+
             return fullText;
         } catch (error) {
             console.error('Error processing PDF:', error);

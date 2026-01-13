@@ -151,6 +151,16 @@ class App {
         });
     }
 
+    async ensureModelLoaded() {
+        if (this.llm.isLoaded) return true;
+        
+        if (confirm(`No model is currently loaded. Would you like to load the default model (${CONFIG.DEFAULT_MODEL})?`)) {
+            await this.handleLoadModel(CONFIG.DEFAULT_MODEL);
+            return this.llm.isLoaded;
+        }
+        return false;
+    }
+
     async handleChatMessage(text) {
         if (!text.trim()) return;
 
@@ -161,8 +171,11 @@ class App {
 
         // Check if model is loaded
         if (!this.llm.isLoaded) {
-            this.ui.appendMessage('assistant', "⚠️ **Error**: Please load a model from the sidebar first.");
-            return;
+            const loaded = await this.ensureModelLoaded();
+            if (!loaded) {
+                this.ui.appendMessage('assistant', "⚠️ **Error**: Please load a model from the sidebar first.");
+                return;
+            }
         }
 
         // 2. LLM: Generate Response

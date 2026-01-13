@@ -70,48 +70,68 @@ export class RagTab {
                 this.appendMessage(chatContainer, 'user', query);
                 input.value = '';
                 input.style.height = '6rem'; // Reset height
-                
+
                 try {
+                    if (!this.context.llm.isLoaded) {
+                        const loaded = await this.context.ensureModelLoaded();
+                        if (!loaded) {
+                            this.appendMessage(chatContainer, 'system', "Please load a model to chat.");
+                            return;
+                        }
+                    }
+
                     loading.classList.remove('hidden');
                     sendBtn.disabled = true;
-                    
+
                     // 1.5. Query Rewriting for Better RAG
                     const searchQueries = [query]; // Start with original
                     const summaries = [];
                     for (let i = 0; i < localStorage.length; i++) {
-                         const key = localStorage.key(i);
-                         if (key && key.startsWith('doc_')) {
-                             try {
-                                 const d = JSON.parse(localStorage.getItem(key));
-                                 if(d.summary) summaries.push(`- [${d.name}]: ${d.summary}`);
-                             } catch(e) {}
-                         }
+                        const key = localStorage.key(i);
+                        if (key && key.startsWith('doc_')) {
+                            try {
+                                const d = JSON.parse(localStorage.getItem(key));
+                                if (d.summary) summaries.push(`- [${d.name}]: ${d.summary}`);
+                            } catch (e) { }
+                        }
                     }
 
                     if (summaries.length > 0) {
-                         try {
-                             const rewritePrompt = [
-                                { role: "system", content: "You are an expert search query optimizer.\n\nTask:\n1. Analyze the User Question to understand the core intent.\n2. Review the Document Abstracts to identify matching terminology.\n3. Generate 3 DISTINCT search queries that map the user's intent to the specific vocabulary used in the documents.\n\nOutput logic:\n- One query per line.\n- Start each query with a hyphen '-'.\n- NO intro/outro text." },
+                        try {
+                            const rewritePrompt = [
+                                { role: "system", content: "You are an expert search query optimizer.\n\nTask: Generate 3 simple, distinct search queries based on the user's question and document abstracts. \n\nCRITICAL OUTPUT RULES:\n1. Output ONLY the 3 queries.\n2. Start EACH line with a hyphen (-).\n3. Do NOT include headers, categories, or conversational text.\n4. Do NOT group queries.\n\nExample:\n- query one\n- query two\n- query three" },
                                 { role: "user", content: `User Question: "${query}"\n\nAvailable Document Abstracts:\n${summaries.join('\n')}` }
-                             ];
-                             
-                             const rewritten = await this.context.llm.chat(rewritePrompt);
-                             if (rewritten) {
-                                  rewritten.split('\n').forEach(line => {
-                                      const cleaned = line.replace(/^(?:hyphen|[\-\*\d\.\s])+/i, '').trim();
-                                      if (cleaned.length > 2) searchQueries.push(cleaned);
-                                  });
-                             }
-                             console.log("RAG Queries:", searchQueries);
-                         } catch (rwErr) {
-                             console.warn("Query rewriting failed", rwErr);
-                         }
+                            ];
+
+                            const rewritten = await this.context.llm.chat(rewritePrompt);
+                            if (rewritten) {
+                                rewritten.split('\n').forEach(line => {
+                                    const trimmed = line.trim();
+                                    // Only accept lines strictly starting with -, *, or digit
+                                    if (/^[\-\*]|\d+\./.test(trimmed)) {
+                                        let cleaned = trimmed.replace(/^[\-\*\d\.]+\s*/, '').trim();
+                                        // Keep only text between the quotes if present
+                                        const quoteMatch = cleaned.match(/"(.*?)"/);
+                                        if (quoteMatch) {
+                                            cleaned = quoteMatch[1];
+                                        }
+
+                                        if (cleaned.length > 2 && !cleaned.toLowerCase().startsWith("here are")) {
+                                            searchQueries.push(cleaned);
+                                        }
+                                    }
+                                });
+                            }
+                            console.log("RAG Queries:", searchQueries);
+                        } catch (rwErr) {
+                            console.warn("Query rewriting failed", rwErr);
+                        }
                     }
 
                     // 2. Retrieve Context (Multi-Query Vector Search)
                     let allResults = [];
                     const seenIds = new Set();
-                    
+
                     // Run searches in parallel for speed
                     const searchPromises = searchQueries.map(q => this.context.vectorStore.search(q, 5));
                     const searchResultsArray = await Promise.all(searchPromises);
@@ -131,35 +151,34 @@ export class RagTab {
                             }
                         }
                     }
-                    
-                    // Sort by score and take top 7
+
+                    // Sort by score and take top 10
                     allResults.sort((a, b) => b.score - a.score);
-                    const results = allResults.slice(0, 7);
-                    
+                    const results = allResults.slice(0, 10);
+
                     // 3. Construct Prompt with Improved System Instructions
                     const seenAbstracts = new Set();
-                    const contextText = results.map(r => {
-                         const meta = r.item.metadata;
-                         const filename = meta.filename || 'Unknown Document';
-                         let recap = '';
+                    const contextText = results.map((r, index) => {
+                        const meta = r.item.metadata;
+                        const filename = meta.filename || 'Unknown Document';
+                        let recap = '';
 
-                         if (meta.summary && !seenAbstracts.has(filename)) {
-                             recap = `\n[Abstract: ${meta.summary}]`;
-                             seenAbstracts.add(filename);
-                         }
+                        if (meta.summary && !seenAbstracts.has(filename)) {
+                            recap = `\n[Abstract: ${meta.summary}]`;
+                            seenAbstracts.add(filename);
+                        }
 
-                         return `[Source: ${filename}]${recap}\n${r.item.content}`;
+                        // Inject as numbered source [1], [2]...
+                        return `[${index + 1}] ${recap}\n${r.item.content}`;
                     }).join('\n\n---\n\n');
 
                     console.log(`RAG Context constructed with ${results.length} documents.`);
                     console.log(contextText);
-                    
+
                     const systemPrompt = CONFIG.DEFAULT_PARAMS.rag_system_prompt;
 
-                    console.log("RAG System Prompt:", systemPrompt);
+                    const fullPrompt = `CONTEXT:\n${contextText}\n\nQUESTION: ${query}`;
 
-                    const fullPrompt = `Context:\n${contextText}\n\nQuestion: ${query}`;
-                    
                     const messages = [
                         { role: "system", content: systemPrompt },
                         { role: "user", content: fullPrompt }
@@ -174,44 +193,51 @@ export class RagTab {
                     // Stream response
                     let collectedText = "";
                     await this.context.llm.chat(messages, (chunk, fullText) => {
-                         collectedText = fullText;
-                         
-                         // Process Citations
-                         const sourceRegex = /\[Source:\s*(.*?)\]/g;
-                         const uniqueSources = new Map();
-                         let sourceCount = 0;
-                         
-                         // Create placeholders AND build source list
-                         const formattedMarkdown = fullText.replace(sourceRegex, (match, filename) => {
-                             const name = filename.trim();
-                             if (!uniqueSources.has(name)) {
-                                 sourceCount++;
-                                 uniqueSources.set(name, sourceCount);
-                             }
-                             const id = uniqueSources.get(name);
-                             return `CITATION_${id}`;
-                         });
+                        collectedText = fullText;
 
-                         let html = marked.parse(formattedMarkdown);
-                         
-                         // Replace placeholders with Visual Pills
-                         const sortedSources = Array.from(uniqueSources.entries()).sort((a, b) => a[1] - b[1]);
-                         
-                         html = html.replace(/CITATION_(\d+)/g, (match, id) => {
-                             const src = sortedSources.find(s => s[1] == id);
-                             const name = src ? src[0] : 'Unknown';
-                             return `<sup class="inline-block"><span class="cursor-help group relative px-1.5 py-0.5 ml-0.5 rounded-full bg-slate-700 hover:bg-indigo-600 text-indigo-300 hover:text-white text-[10px] font-bold transition-colors select-none" data-id="${id}">
+                        // Process Citations: matches [1], [2] etc.
+                        const sourceRegex = /\[(\d+)\]/g;
+                        const uniqueSources = new Map();
+                        let sourceCount = 0;
+
+                        // Create placeholders AND build source list
+                        const formattedMarkdown = fullText.replace(sourceRegex, (match, digits) => {
+                            const index = parseInt(digits, 10) - 1; // Convert 1-based [1] to 0-based index
+
+                            if (index >= 0 && index < results.length) {
+                                const item = results[index].item;
+                                const name = (item.metadata && item.metadata.filename) ? item.metadata.filename.trim() : 'Unknown';
+                                
+                                if (!uniqueSources.has(name)) {
+                                    sourceCount++;
+                                    uniqueSources.set(name, sourceCount);
+                                }
+                                const id = uniqueSources.get(name);
+                                return `CITATION_${id}`;
+                            }
+                            return match; // Return original text if index out of bounds
+                        });
+
+                        let html = marked.parse(formattedMarkdown);
+
+                        // Replace placeholders with Visual Pills
+                        const sortedSources = Array.from(uniqueSources.entries()).sort((a, b) => a[1] - b[1]);
+
+                        html = html.replace(/CITATION_(\d+)/g, (match, id) => {
+                            const src = sortedSources.find(s => s[1] == id);
+                            const name = src ? src[0] : 'Unknown';
+                            return `<sup class="inline-block"><span class="cursor-help group relative px-1.5 py-0.5 ml-0.5 rounded-full bg-slate-700 hover:bg-indigo-600 text-indigo-300 hover:text-white text-[10px] font-bold transition-colors select-none" data-id="${id}">
                                  ${id}
                                  <span class="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded shadow-xl whitespace-nowrap z-50 text-xs text-slate-300 pointer-events-none">
                                      <span class="flex items-center gap-1.5"><i data-lucide="file-text" class="w-3 h-3"></i> ${name}</span>
                                      <svg class="absolute text-slate-900 h-2 w-full left-0 top-full" x="0px" y="0px" viewBox="0 0 255 255"><polygon class="fill-current" points="0,0 127.5,127.5 255,0"/></svg>
                                  </span>
                              </span></sup>`;
-                         });
+                        });
 
-                         // Append Sources List
-                         if (sortedSources.length > 0) {
-                             html += `
+                        // Append Sources List
+                        if (sortedSources.length > 0) {
+                            html += `
                              <div class="mt-6 pt-4 border-t border-slate-700/50">
                                  <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Sources Cited</h4>
                                  <div class="flex flex-wrap gap-2">
@@ -223,15 +249,15 @@ export class RagTab {
                                      `).join('')}
                                  </div>
                              </div>`;
-                         }
+                        }
 
-                         contentDiv.innerHTML = html;
-                         
-                         if (window.lucide) window.lucide.createIcons();
-                         
-                         // Auto-scroll logic
-                         const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < 100;
-                         if (isNearBottom) chatContainer.scrollTop = chatContainer.scrollHeight;
+                        contentDiv.innerHTML = html;
+
+                        if (window.lucide) window.lucide.createIcons();
+
+                        // Auto-scroll logic
+                        const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < 100;
+                        if (isNearBottom) chatContainer.scrollTop = chatContainer.scrollHeight;
                     });
 
                 } catch (err) {
@@ -246,7 +272,7 @@ export class RagTab {
 
             // Bind Events
             sendBtn.addEventListener('click', handleSend);
-            
+
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -271,12 +297,16 @@ export class RagTab {
                 const progressText = document.getElementById('progress-text');
 
                 if (files.length > 0) {
+                    if (!this.context.llm.isLoaded) {
+                        await this.context.ensureModelLoaded();
+                    }
+
                     for (const file of files) {
                         if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
                             console.warn(`Skipping non-PDF file: ${file.name}`);
                             continue;
                         }
-                        
+
                         console.log(`Processing ${file.name}...`);
                         progressContainer.classList.remove('hidden');
                         progressText.textContent = "Parsing PDF...";
@@ -286,54 +316,54 @@ export class RagTab {
                             const text = await this.context.pdfProcessor.loadFile(file);
                             console.log(`Text extracted from ${file.name}`);
 
-                           // Generate Recap
-                           progressText.textContent = "Generating Abstract...";
-                           progressBar.style.width = '10%';
-                           
-                           let summary = "";
-                           try {
-                               const summaryPrompt = [
-                                   { role: "system", content: "You are a helpful assistant. Provide a concise 1-2 sentence abstract/recap of the provided text. Respond only with the abstract, do not include any additional commentary." },
-                                   { role: "user", content: `Document Title: ${file.name}\n\nContent (First 10k chars):\n${text.substring(0, 10000)}...` }
-                               ];
-                               summary = await this.context.llm.chat(summaryPrompt);
-                               summary = summary.trim();
-                           } catch (sumErr) {
-                               console.warn("Summarization failed:", sumErr);
-                               summary = "Abstract not available.";
-                           }
-                            
-                           // Chunking
-                           progressText.textContent = "Chunking & Embedding...";
-                           const chunks = this.context.pdfProcessor.chunkText(text);
-                           console.log(`Processing ${chunks.length} chunks for vector store...`);
+                            // Generate Recap
+                            progressText.textContent = "Generating Abstract...";
+                            progressBar.style.width = '10%';
 
-                           // Embed & Index
-                           let processed = 0;
-                           for (const chunk of chunks) {
-                               await this.context.vectorStore.addDocument({
-                                   text: chunk.text,
-                                   metadata: {
-                                       ...chunk.metadata,
-                                       filename: file.name,
-                                       summary: summary
-                                   }
-                               });
-                               processed++;
-                               
-                               const pct = Math.round((processed / chunks.length) * 100);
-                               // Update UI every few chunks to avoid too many reflows
-                               if (processed % 5 === 0 || processed === chunks.length) {
-                                   progressBar.style.width = `${pct}%`;
-                                   progressText.textContent = `${pct}%`;
-                                   
-                                   // Update global stats (Chunks count)
-                                   this.context.updateSideBarStats();
-                                   
-                                   // Yield to UI thread
-                                   await new Promise(r => setTimeout(r, 0));
-                               }
-                           }
+                            let summary = "";
+                            try {
+                                const summaryPrompt = [
+                                    { role: "system", content: "You are a helpful assistant. Provide a concise 1-2 sentence abstract/recap of the provided text. Respond only with the abstract, do not include any additional commentary." },
+                                    { role: "user", content: `Document Title: ${file.name}\n\nContent (First 10k chars):\n${text.substring(0, 10000)}...` }
+                                ];
+                                summary = await this.context.llm.chat(summaryPrompt);
+                                summary = summary.trim();
+                            } catch (sumErr) {
+                                console.warn("Summarization failed:", sumErr);
+                                summary = "Abstract not available.";
+                            }
+
+                            // Chunking
+                            progressText.textContent = "Chunking & Embedding...";
+                            const chunks = this.context.pdfProcessor.chunkText(text);
+                            console.log(`Processing ${chunks.length} chunks for vector store...`);
+
+                            // Embed & Index
+                            let processed = 0;
+                            for (const chunk of chunks) {
+                                await this.context.vectorStore.addDocument({
+                                    text: chunk.text,
+                                    metadata: {
+                                        ...chunk.metadata,
+                                        filename: file.name,
+                                        summary: summary
+                                    }
+                                });
+                                processed++;
+
+                                const pct = Math.round((processed / chunks.length) * 100);
+                                // Update UI every few chunks to avoid too many reflows
+                                if (processed % 5 === 0 || processed === chunks.length) {
+                                    progressBar.style.width = `${pct}%`;
+                                    progressText.textContent = `${pct}%`;
+
+                                    // Update global stats (Chunks count)
+                                    this.context.updateSideBarStats();
+
+                                    // Yield to UI thread
+                                    await new Promise(r => setTimeout(r, 0));
+                                }
+                            }
 
                             // Store in LocalStorage (Text backup)
                             const docId = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -347,10 +377,10 @@ export class RagTab {
                                 summary: summary
                             };
                             localStorage.setItem(docId, JSON.stringify(docData));
-                            
+
                             // Update sidebar stats immediately
                             this.context.updateSideBarStats();
-                            
+
                         } catch (err) {
                             console.error(`Error loading ${file.name}`, err);
                             alert(`Error loading ${file.name}: ${err.message}`);
@@ -413,11 +443,11 @@ export class RagTab {
 
         const div = document.createElement('div');
         div.className = `flex gap-4 ${role === 'user' ? 'flex-row-reverse' : ''} mb-6 animate-fade-in`;
-        
-        const avatar = role === 'user' 
+
+        const avatar = role === 'user'
             ? `<div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0"><i data-lucide="user" class="w-4 h-4 text-white"></i></div>`
             : `<div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center shrink-0"><i data-lucide="bot" class="w-4 h-4 text-white"></i></div>`;
-            
+
         div.innerHTML = `
             ${avatar}
             <div class="flex-1 w-full max-w-full">
@@ -426,7 +456,7 @@ export class RagTab {
                 </div>
             </div>
         `;
-        
+
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;
         if (window.lucide) window.lucide.createIcons();
@@ -436,7 +466,7 @@ export class RagTab {
     renderLibrary() {
         const docList = document.getElementById('doc-list');
         if (!docList) return;
-        
+
         docList.innerHTML = '';
         const docs = [];
         for (let i = 0; i < localStorage.length; i++) {
@@ -444,13 +474,13 @@ export class RagTab {
             if (key && key.startsWith('doc_')) {
                 try {
                     docs.push(JSON.parse(localStorage.getItem(key)));
-                } catch(e) { console.error(e); }
+                } catch (e) { console.error(e); }
             }
         }
-        
+
         // Sort by date desc (newest first)
         docs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
-        
+
         docs.forEach(doc => {
             const el = document.createElement('div');
             el.className = 'p-3 bg-slate-800 rounded-lg border border-slate-700 hover:border-indigo-500 transition-colors group relative';
@@ -475,7 +505,7 @@ export class RagTab {
             // Add Delete Event
             el.querySelector('.delete-doc').addEventListener('click', (e) => {
                 e.stopPropagation();
-                if(confirm(`Delete ${doc.name}?`)) {
+                if (confirm(`Delete ${doc.name}?`)) {
                     localStorage.removeItem(doc.id);
                     this.renderLibrary();
                 }
@@ -483,7 +513,7 @@ export class RagTab {
 
             docList.appendChild(el);
         });
-        
+
         if (window.lucide) window.lucide.createIcons();
         this.context.updateSideBarStats();
     }
@@ -530,28 +560,28 @@ export class RagTab {
                 </div>
             </div>
         `;
-        
+
         container.appendChild(overlay);
         if (window.lucide) window.lucide.createIcons();
-        
+
         // Bind logic
         const btn = overlay.querySelector('#confirm-embedding');
         const radios = overlay.querySelectorAll('input[name="initial-embedding"]');
-        
+
         btn.addEventListener('click', async () => {
             const selected = Array.from(radios).find(r => r.checked);
             if (!selected) {
-                 alert('Please select a model.');
-                 return;
+                alert('Please select a model.');
+                return;
             }
-            
+
             try {
                 btn.textContent = "Loading Model...";
                 btn.disabled = true;
-                
+
                 // Initialize
                 await this.context.vectorStore.setModel(selected.value);
-                
+
                 // Remove overlay
                 overlay.remove();
             } catch (e) {
